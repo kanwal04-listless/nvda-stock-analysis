@@ -1,0 +1,110 @@
+"""
+NVIDIA (NVDA) Stock Price Analysis
+Computes moving averages, daily returns, and volatility from historical price data.
+
+Requirements: pip install yfinance pandas matplotlib numpy
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+try:
+    import yfinance as yf
+    USE_LIVE_DATA = True
+except ImportError:
+    USE_LIVE_DATA = False
+
+
+def get_nvda_data(period="1y"):
+    """
+    Fetch NVDA historical price data.
+    Falls back to a synthetic dataset if yfinance/network access is unavailable,
+    so this script can still be run and reviewed end to end.
+    """
+    if USE_LIVE_DATA:
+        data = yf.download("NVDA", period=period, progress=False)
+        if not data.empty:
+            data.columns = data.columns.get_level_values(0) if isinstance(data.columns, pd.MultiIndex) else data.columns
+            return data
+
+    print("Live data unavailable — generating a synthetic placeholder dataset instead.")
+    rng = np.random.default_rng(seed=42)
+    dates = pd.bdate_range(end=pd.Timestamp.today(), periods=252)
+    daily_returns = rng.normal(loc=0.001, scale=0.025, size=len(dates))
+    price = 130 * (1 + daily_returns).cumprod()
+    data = pd.DataFrame({
+        "Open": price * (1 - rng.uniform(0, 0.01, len(dates))),
+        "High": price * (1 + rng.uniform(0, 0.015, len(dates))),
+        "Low": price * (1 - rng.uniform(0, 0.015, len(dates))),
+        "Close": price,
+        "Volume": rng.integers(150_000_000, 400_000_000, len(dates)),
+    }, index=dates)
+    return data
+
+
+def compute_moving_averages(data, short_window=20, long_window=50):
+    data = data.copy()
+    data[f"MA_{short_window}"] = data["Close"].rolling(window=short_window).mean()
+    data[f"MA_{long_window}"] = data["Close"].rolling(window=long_window).mean()
+    return data
+
+
+def compute_returns_and_volatility(data, window=20):
+    data = data.copy()
+    data["Daily_Return"] = data["Close"].pct_change()
+    data["Rolling_Volatility"] = data["Daily_Return"].rolling(window=window).std() * np.sqrt(252)  # annualized
+    return data
+
+
+def summarize(data):
+    latest = data.iloc[-1]
+    annual_return = (data["Close"].iloc[-1] / data["Close"].iloc[0] - 1) * 100
+    avg_volatility = data["Rolling_Volatility"].mean() * 100
+
+    print("=" * 50)
+    print("NVDA Price Analysis Summary")
+    print("=" * 50)
+    print(f"Period: {data.index[0].date()} to {data.index[-1].date()}")
+    print(f"Latest Close: ${latest['Close']:.2f}")
+    print(f"20-day MA: ${latest['MA_20']:.2f}")
+    print(f"50-day MA: ${latest['MA_50']:.2f}")
+    trend = "bullish (20MA > 50MA)" if latest["MA_20"] > latest["MA_50"] else "bearish (20MA < 50MA)"
+    print(f"Trend signal: {trend}")
+    print(f"Total return over period: {annual_return:.2f}%")
+    print(f"Average annualized volatility: {avg_volatility:.2f}%")
+    print("=" * 50)
+
+
+def plot_analysis(data):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+
+    ax1.plot(data.index, data["Close"], label="Close Price", color="black", linewidth=1)
+    ax1.plot(data.index, data["MA_20"], label="20-day MA", color="tab:blue", linewidth=1)
+    ax1.plot(data.index, data["MA_50"], label="50-day MA", color="tab:orange", linewidth=1)
+    ax1.set_title("NVDA Price with Moving Averages")
+    ax1.set_ylabel("Price ($)")
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+
+    ax2.plot(data.index, data["Rolling_Volatility"] * 100, color="tab:red", linewidth=1)
+    ax2.set_title("Rolling 20-Day Annualized Volatility")
+    ax2.set_ylabel("Volatility (%)")
+    ax2.set_xlabel("Date")
+    ax2.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig("nvda_analysis.png", dpi=150)
+    print("Chart saved to nvda_analysis.png")
+
+
+if __name__ == "__main__":
+    data = get_nvda_data(period="1y")
+    data = compute_moving_averages(data)
+    data = compute_returns_and_volatility(data)
+    data = data.dropna()
+
+    summarize(data)
+    plot_analysis(data)
+    data.to_csv("nvda_analysis_output.csv")
+    print("Full data exported to nvda_analysis_output.csv")
