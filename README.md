@@ -1,6 +1,6 @@
 NVDA Stock Price Analysis
-A Python project analyzing NVIDIA (NVDA) stock price trends using moving averages and rolling volatility.
 
+A Python project analyzing NVIDIA (NVDA) stock price trends using moving averages and rolling volatility.
 What it does
 Pulls historical NVDA price data via the yfinance API
 Computes 20-day and 50-day moving averages to identify trend signals
